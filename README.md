@@ -378,7 +378,7 @@ Unicode 码点（Unicode code point）是指 Unicode 字符集中每个字符对
 
 Rust 中的布尔类型有两个可能的值：true 和 false，布尔值占用内存的大小为 1 个字节：
 
-```
+```rust
 fn main() {
     let t = true;
 
@@ -410,7 +410,7 @@ fn main() {
 
 元组是由多种类型组合到一起形成的，因此它是复合类型，元组的长度是固定的，元组中元素的顺序也是固定的.
 
-```
+```rust
 fn main() {
     let tup: (i32, f64, u8) = (500, 6.4, 1);
 
@@ -420,7 +420,7 @@ fn main() {
 
 使用模式匹配解构元组
 
-```
+```rust
 fn main() {
     let tup = (500, 6.4, 1);
 
@@ -432,7 +432,7 @@ fn main() {
 
 访问某个特定元素，索引从 0 开始
 
-```
+```rust
 fn main() {
     let x: (i32, f64, u8) = (500, 6.4, 1);
 
@@ -446,7 +446,7 @@ fn main() {
 
 元组的成员还可以是一个元组
 
-```
+```rust
 fn main() {
     let _t1: (u8, (i16, u32)) = (0, (-1, 1));
 }
@@ -478,7 +478,7 @@ fn main() {
 
 正确方式，元组转换为数组并进行迭代
 
-```
+```rust
 fn main() {
     let a = (1, 2, 3); 
     let array = [a.0, a.1, a.2]; 
@@ -491,7 +491,7 @@ fn main() {
 
 包含单个值的元组，称为单元素元组，它的类型是 (T,)，其中 T 是单个元素的类型，逗号是必须的，以区分它和被括号包裹的值。
 
-```
+```rust
 fn main() {
     let x = (1,); // 单元素元组
     let y = (2); // 一个整数
@@ -553,17 +553,17 @@ let a = [3, 3, 3, 3, 3];
 
 因为数组是连续存放元素的，因此可以通过索引的方式来访问存放其中的元素
 
-```
+```rust
 fn main() {
     let a = [9, 8, 7, 6, 5];
 
-    let first = a[0]; // 获取a数组第一个元素
+    let first = a[0];  // 获取第一个元素
     let second = a[1]; // 获取第二个元素
 }
 ```
 循环迭代数组元素
 
-```
+```rust
 fn main() {
     let a = [9, 8, 7, 6, 5];
     for i in &a {
@@ -574,7 +574,7 @@ fn main() {
 
 **修改数组元素**
 
-```
+```rust
 fn main() {
     let mut a = [3; 5];
 
@@ -585,7 +585,7 @@ fn main() {
 
 **数组切片**
 
-```
+```rust
 fn main() {
     let mut a = [3; 5];
 
@@ -600,6 +600,116 @@ fn main() {
     println!("{:?}", a);
 }
 ```
+
+注：在数组上看到的那些实用方法（遍历元素、搜索、排序、填充、过滤等）都是作为切片而非数组的方式提供的。但是 Rust 在搜索各种方法时会隐式地将对数组的引用转换为切片，因此可以直接在数组上调用任何切片方法。
+
+
+### Vector
+
+一个 `Vec<T>` 是一个长度可变的类型 T 的数组，它的元素都存储在堆上。
+
+一个 `Vec<T>` 由 3 个值组成：一个指针指向堆上存储元素的缓冲区，这个缓冲区的所有权属于这个 `Vec<T>`；缓冲区可以存储的元素的数量；它现在实际已经拥有的元素的数量（也就是它的长度）。当缓冲区的的元素到达最大容量时，继续添加元素会导致vector重新分配一个更大的缓冲区，再把已有元素都拷贝过去，然后更新 vector的指针和容量，最后释放旧的缓冲区。
+
+**创建**
+
+使用 `vec!` 宏创建一个 `Vec<T>`:
+
+```rust
+fn main() {
+    let mut v = vec![1, 2, 3, 4, 5];
+    println!("v = {:?}", v);  // v = [1, 2, 3, 4, 5]
+    v.push(11);
+    v.push(13);
+    println!("v = {:?}", v);  // v = [1, 2, 3, 4, 5, 11, 13]
+}
+```
+
+`vec!` 宏等价于调用 `Vec::new` 创建一个新的空 vector:
+
+```rust
+fn main() {
+    let mut v = Vec::new();
+    v.push(1);
+    v.push(2);
+    v.push(3);
+    println!("v = {:?}", v);  // v = [1, 2, 3]
+}
+```
+
+另一种创建 vector 的方法是通过迭代器创建：
+
+```rust
+fn main() {
+    let v: Vec<i32> = (0..5).collect();
+    println!("v = {:?}", v);  // v = [0, 1, 2, 3, 4]
+}
+```
+
+可以使用 `Vec::with_capacity` 来创建一个指定的缓冲区的 vector，避免重新分配内存。
+
+```rust
+fn main() {
+    let mut v = Vec::with_capacity(2);
+    println!("{:?}", v.len());      // 0
+    println!("{:?}", v.capacity()); // 2
+    v.push(1);
+    v.push(2);
+    println!("{:?}", v.len());      // 2
+    println!("{:?}", v.capacity()); // 2
+}
+```
+
+**插入、移除**
+
+可以在 vector 中任意插入或移除元素，这些操作会移动修改位置前面或者后面的元
+素。
+
+```rust
+fn main() {
+    let mut v = vec![10, 20, 30, 40, 50];
+    // 在索引为 3的地方插入 35
+    v.insert(3, 35);
+    assert_eq!(v, [10, 20, 30, 35, 40, 50]);
+    // 移除索引为 1的元素
+    v.remove(1);
+    assert_eq!(v, [10, 30, 35, 40, 50]);
+}
+```
+
+你可以使用 pop 方法移除最后一个元素并返回它。更确切地说，从 `Vec<T>` 中弹出只会返回一个 `Option<T>`：如果 vector 已经为空是 None，如果最后一个元素是 v 就是 Some(v)：
+
+```rust
+fn main() {
+    let mut v = vec!["Snow Puff", "Glass Gem"];
+    assert_eq!(v.pop(), Some("Glass Gem"));
+    assert_eq!(v.pop(), Some("Snow Puff"));
+    assert_eq!(v.pop(), None);
+}
+```
+
+**循环访问**
+
+```rust
+fn main() {
+    let a = vec![1, 2, 3, 4, 5];
+
+    // 借用
+    for i in &a {
+        println!("{}", i);
+    }
+
+    for i in a {
+        println!("{}", i);
+    }
+
+    // 报错，a已经被move了
+    println!("{:?}", a);
+}
+```
+
+
+
+
 
 ## 运算
 
