@@ -14,6 +14,7 @@
     * [数组](#数组)
     * [vector](#vector)
     * [切片](#切片)
+    * [字符串](#字符串)
 * [运算](#运算)
     * [数字运算](#数字运算)
     * [位运算](#位运算)
@@ -743,6 +744,129 @@ print(&a); // 可以用于数组
 print(&v); // 也可以用于 vector
 ```
 
+### 字符串
+
+Rust 的字符串类型是 `&str` 和 `String`。
+
+#### 字符串字面量
+
+字符串字面量 &str 被双引号包裹，和 char 字面量一样是通过反斜杠来转义：
+
+```rust
+fn main() {
+    let speech = "\"Ouch!\" said the well.";
+    println!("{}", speech);   // "Ouch!" said the well.
+}
+```
+
+如果字符串中的一行以反斜杠结尾，那么换行符和下一行的前导空格就会被丢弃掉：
+
+```rust
+fn main() {
+    let speech = "much ado about \
+    nothing";
+    println!("{}", speech);   // much ado about nothing
+}
+```
+
+用小写字母 `r` 来提供了原始字符串，原始字符串中的所有反斜杠和空白字符都被原样包含在字符串里，
+不会识别任何转义：
+
+```rust
+fn main() {
+    let default_win_install_path = r"C:\Program Files\Gorillas";
+    println!("{}", default_win_install_path);  
+    // C:\Program Files\Gorillas
+
+    println!(r###"
+    This raw string started with 'r###"'.
+    Therefore it does not end until we reach a quote mark ('"')
+    followed immediately by three pound signs ('###'):
+    "###);
+
+    // This raw string started with 'r###"'.
+    // Therefore it does not end until we reach a quote mark ('"')
+    // followed immediately by three pound signs ('###'):
+}
+```
+
+#### 字节串
+
+以 b 前缀开头的字符串字面量是字节字符串。这种字符串实际上是u8 值的切片——也就是
+字节流——而不是 Unicode 文本：
+
+```rust
+let method = b"GET";
+assert_eq!(method, &[b'G', b'E', b'T']);
+```
+
+#### 内存中的字符串
+
+Rust的字符串是 Unicode 字符的序列，但它并不是作为char 的数组存储在内存中。事实上
+它使用 UTF-8 编码存储，这是一种可变长度的编码。每一个 ASCII 字符被存储为一个字节，
+其他字符可能会占据多个字节。
+
+下图显示下面代码创建的 String 和 &str:
+
+```
+let noodles = "noodles".to_string();
+let oodles = &noodles[1..];
+let poodles = "ನಮಸ್ಕಾರ"
+```
+
+![alt text](/images/string.png)
+
+noodles 是一个拥有 8 个字节大小的缓冲区的 String，其中 7 个字节已经被使用。你可以将String 想象为保证内容是有效 UTF-8 编码的 Vec<u8>；事实上，String 就是这么实现的。
+
+一个 &str（读作“stir”或者“字符串切片”）是一个指向其他值拥有的UTF-8 文本的引用：
+它“借用”了这段文本。在这个例子中，oodles 是一个指向 noodles 所持有的文本中的最后六
+个字节的 &str，因此它表示文本“oodles”。就像其他切片引用一样，&str 是一种胖指针，包
+括实际数据的地址和长度。你可以将 &str 看作一个保证内容为合法的 UTF-8 编码的 &[u8]。
+
+字符串字面量是一个指向预先分配好内存的文本的 &str，实际的文本通常和程序的机器码
+一起存储到只读的内存区域。在之前的例子中，poodles 是一个字符串字面量，指向程序运
+行时就已经被创建好并且持续到程序退出的 7 个字节。
+
+一个 String 或 &str 的 `len()` 方法返回它的长度。但这个长度是以字节为单位，而不是以
+字符为单位：
+
+```
+assert_eq!("ನಮಸ್ಕಾರ".len(), 21);
+```
+
+要在运行时创建新的字符串，要使用 String。
+
+#### String
+
+&str 和 &[T] 很像：都是一个指向某些数据的胖指针。String 类似于 Vec<T>，如表 3-11所示。
+
+![alt text](/images/string-vec.png)
+
+类似于 Vec，每个 String 都有它自己的在堆上分配的缓冲区，这个缓冲区不和其他任
+何 String 共享。
+
+有几种方式创建 String：
+
+`.to_string()` 方法把 &str 转换为一个 String，这会拷贝字符串：
+
+```rust
+let error_message = "too many pets".to_string()
+```
+
+`format!()` 宏类似于 `println!()`，区别在于它返回一个新的 String 而不是把它打印到标准输出，而且它不会在最后自动加上换行符：
+
+```rust
+assert_eq!(format!("{}°{:02}′{:02}″N", 24, 5, 23),
+"24°05′23″N".to_string());
+```
+
+字符串的数组、切片、vector 都有两个方法 `.concat()` 和 `.join(sep)`，把多个字符串组合成一个：
+
+```rust
+let bits = vec!["veni", "vidi", "vici"];
+assert_eq!(bits.concat(), "venividivici");
+assert_eq!(bits.join(", "), "veni, vidi, vici");
+```
 
 ## 运算
 
