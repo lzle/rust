@@ -19,6 +19,15 @@
     * [数字运算](#数字运算)
     * [位运算](#位运算)
 
+* [所有权和移动](#所有权和移动)
+    * [所有权](#所有权)
+    * [移动](#移动)
+    * [Copy 类型](#copy-类型)
+    * [Rc 和 Arc](#rc-和-arc共享所有权)
+
+* [引用](#引用)
+    * [引用](#引用)
+
 
 ## 入门
 
@@ -142,7 +151,7 @@ $ ./target/release/hello_cargo
 Hello, world!
 ```
 
-#### cargo check
+#### Cargo Check
 
 当项目大了后，`cargo run` 和 `cargo build` 不可避免的会变慢，那么有没有更快的方式来验证代码的正确性呢？大杀器来了，接着！
 
@@ -479,7 +488,7 @@ fn main() {
 }
 ```
 
-正确方式，元组转换为数组并进行迭代
+正确方式，元组转换为数组进行迭代（元素数据类型一致）
 
 ```rust
 fn main() {
@@ -840,7 +849,7 @@ assert_eq!("ನಮಸ್ಕಾರ".len(), 21);
 
 &str 和 &[T] 很像：都是一个指向某些数据的胖指针。String 类似于 Vec<T>，如表 3-11所示。
 
-![alt text](/images/string-vec.png)
+<img src="/images/string-vec.png" alt="string-vec" width="650">
 
 类似于 Vec，每个 String 都有它自己的在堆上分配的缓冲区，这个缓冲区不和其他任
 何 String 共享。
@@ -940,7 +949,221 @@ fn main() {
 }
 ```
 
+## 所有权和移动
+
+计算机语言不断演变过程中，内存管理出现两张方式：
+
+* 垃圾回收机制(GC)，在程序运行时不断寻找不再使用的内存，典型代表：Java、Go
+
+* 手动管理内存的分配和释放, 在程序中，通过函数调用的方式来申请和释放内存，典型代表：C++、C
+
+Rust 选择了第三种方式：所有权，它是一种在编译时检查内存安全的系统，不需要垃圾回收机制，也不需要手动管理内存。
+
+注：所有权规则可以概括为三个核心规则：
+
+* Rust 中的每一个值都与一个变量明确关联，这个变量是这个值的所有者；
+
+* 任一时刻，每个值都只与一个变量有这种关联（禁止共享）；
+
+* 当这个变量离开作用域，与之关联的值就会被回收（释放资源是安全的）。
+
+### 所有权
+
+但在 Rust中，所有权的概念被内建在语言之中，并且通过编译期检查确保强制执行。每个
+值都只有一个决定它生命周期的所有者。当所有者被释放，它拥有的值也会同时被释放，
+在 Rust中的术语中，释放的行为被称为丢弃（drop）。
+
+```rust
+fn print_padovan() {
+    let mut padovan = vec![1,1,1]; // 在这里分配
+    for i in 3..10 {
+        let next = padovan[i-3] + padovan[i-2];
+    padovan.push(next);
+    }
+    println!("P(1..10) = {:?}", padovan);
+} // padovan 在这里释放
+```
+
+Rust在以下几个方面扩展了所有权的灵活性：
+
+* 你可以将值从一个所有者移动到另一个所有者。这允许你构建、更改、拆除所有权树。
+
+* 很简单的类型例如整数、浮点数和字符被所有权规则排除在外。它们被称为 Copy 类型。
+
+* 标准库提供了引用计数的指针类型 Rc 和 Arc，它们允许值在一定的限制下可以有多个所
+有者。
+
+* 你可以“借用一个值的引用”，引用是生命周期受限的非占有的指针。
+
+### 移动
+
+在 Rust里对大多数类型来说，赋值给变量、把值传给函数、或者从函数返回值并不会拷
+贝这个值：它们只会移动它。源对象放弃了值的所有权，把所有权转移给了目的对象，同
+时源对象变为未初始化的状态；
+
+```rust
+let s = vec!["udon".to_string(), "ramen".to_string, "soba".to_string()];
+let t = s;
+let u = s; // 编译错误
+```
+
+赋值语句 `let t = s`; 把 vector 的三个字段从 s 移动到了 t；现在 t 拥有了这个 vector, s 变成了未初始化的状态。如果你尝试使用 s，编译器会报错。
+
+<img src="/images/move.png" alt="move" width="650">
+
+可以对元素进行深拷贝，这样就不会移动所有权：
+
+```rust
+let s = vec!["udon".to_string(), "ramen".to_string(), "soba".to_string()];
+let t = s.clone();
+let u = s.clone();
+```
+
+#### 移动更多操作
+
+如果你把值移动进一个已经被初始化的变量，Rust会 drop 变量之前的值。例如：
+
+```rust
+let mut s = "Govinda".to_string();
+s = "Siddhartha".to_string(); // 值"Govinda"在这里 drop
+```
+
+Rust 在几乎所有场景下都使用 move。向函数传参会把所有权移动给函数的参数；从函数返回值会把所有权移动给调用者；创建一个元组会把值移动给元组，等等。
+
+```
+struct Person { name: String, birth: i32 }
+let mut composers = Vec::new();
+composers.push(Person { name: "Palestrina".to_string(),
+birth: 1525 });
+```
+
+#### 移动与控制流
+
+如果一个变量在if 表达式的条件判断之后还是有值的，那我们在两个分支中都可以使用它：
+
+```rust
+let x = vec![10, 20, 30];
+if c {
+    f(x); // ... 在这里移动 x的值是 ok的
+} else {
+    g(x); // ... 在这里移动 x的值是 ok的
+}
+h(x); // 这里 x 不能再使用，因为它已经被移动了
+```
+
+出于类似的原因，在循环里移动一个变量的值是禁止的：
+
+```rust
+let x = vec![10, 20, 30];
+while f() { 
+    g(x); // 错误：x会在第一次迭代时被移动
+}
+``` 
+
+#### 移动与索引
+
+我们已经提到过移动会将源对象设置为未初始化状态，目的对象会获得值的所有权。
+但并不是每一种值的所有者都可以设置为未初始化状态。
+
+```rust
+let mut v = Vec::new();
+for i in 101 .. 106 { 
+    v.push(i.to_string());
+}
+
+let third = v[2];  // // 错误：不能移动 Vec 的索引
+// let third = &v[2];  // 正确：使用引用
+println!("The third element is {}", third);
+
+// error[E0507]: cannot move out of index of `Vec<String>`
+// |
+// 14 | let third = v[2];
+// | ^^^^
+// | | | move occurs because value has type `String`,
+// | which does not implement the `Copy` trait
+// | help: consider borrowing here: `&v[2]`
+```
+
+有三种方法解决这个问题：
+
+```
+// 创建一个 string的 vector："101", "102", ... "105"
+let mut v = Vec::new();
+    for i in 101 .. 106 { v.push(i.to_string());
+}
+
+// 1. 弹出 vector尾部的元素
+let fifth = v.pop().expect("vector empty!");
+assert_eq!(fifth, "105");
+
+// 2. 移出给定位置的元素，并把最后一个元素移动过来：
+let second = v.swap_remove(1);
+assert_eq!(second, "102");
+
+// 3. 用另一个值和我们想移出的值交换
+let third = std::mem::replace(&mut v[2], "substitute".to_string());
+assert_eq!(third, "103");
+
+// 让我们看看 vector中还剩下什么。
+assert_eq!(v, vec!["101", "104", "substitute"]);
+```
+
+这三种方法都从 vector中移出一个元素，但仍然保证 vector处于没有空隙的状态，可能长
+度还会变小。
+
+### Copy 类型
+
+对于简单类型例如整数或字符，移动并不是必须的，这些类型被称为 Copy 类型。
+
+```rust
+let string1 = "somnambulance".to_string();
+let string2 = string1;
+
+let num1: i32 = 36;
+let num2 = num1;
+
+```
+
+Rust 赋予一个 Copy 类型的值会拷贝它，而不是移动它。
+
+<img src="/images/copy.png" alt="copy" width="650">
+
+标准的 Copy 类型包括所有的机器整数和浮点数类型、char 和 bool 类型，以及少数其他类
+型。所有元素都是 Copy 类型的元组或数组也是 Copy 类型。
+
+
+### Rc 和 Arc：共享所有权
+
+Rust提供了引用计数类型 Rc 和 Arc。Rc 和 Arc 类型非常相似，它们唯一的不同之处在于 Arc 可以直接安全地在线程之间共享，名称 Arc 是原子引用计数的缩写，Rc 则使用更快一些的非线程安全代码来更新引用计数。
+
+可以使用引用计数来管理值的生存周期，这样就可以在程序的多个部分之间共享值的所有权。
+
+```rust
+use std::rc::Rc;
+
+// Rust可以推断出所有这些类型，写出来是为了更清楚
+let s: Rc<String> = Rc::new("shirataki".to_string());
+let t: Rc<String> = s.clone();
+let u: Rc<String> = s.clone();
+```
+
+对于任意类型 T，一个 Rc<T> 值是一个指向在堆上分配的 T 类型值的指针，同时还附有一
+个引用计数。克隆一个Rc<T> 类型的值并不意味着拷贝 T，它只是简单的创建另一个指向它的
+指针，并且递增引用计数。
+
+<img src="/images/rc.png" alt="rc" width="650">
+
+这三个 Rc<String> 指针都指向内存中的同一块内存，这块内存里存储了一个引用计数和一个 String。通常的所有权规也适用于 Rc 指针，当最后一个 Rc 指针 drop 时，Rust会同时 drop 掉 String。
+
+
+## 引用 
+
+
+
+
 ## 相关链接
 
+[crates.io](https://crates.io/)
+[The Rust Edition Guide](https://doc.rust-lang.org/edition-guide/)
 [标准项目目录结构](https://course.rs/cargo/guide/package-layout.html)
 [变更镜像地址](https://course.rs/first-try/slowly-downloading.html)
