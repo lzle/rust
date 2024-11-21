@@ -18,17 +18,16 @@
 * [运算](#运算)
     * [数字运算](#数字运算)
     * [位运算](#位运算)
-
 * [所有权和移动](#所有权和移动)
     * [所有权](#所有权)
     * [移动](#移动)
     * [Copy 类型](#copy-类型)
     * [Rc 和 Arc](#rc-和-arc共享所有权)
-
 * [引用](#引用)
     * [引用](#引用)
-
 * [生命周期](#生命周期)
+    * [引用](#生命周期标注)
+* [泛型和特征](#泛型和特征)
 
 
 ## 入门
@@ -1198,6 +1197,171 @@ fn longest<'a>(x: &'a str, y: &'a str) -> &'a str {
 * `'a` 指出返回的引用与输入参数x，y之间有关联；
 
 * `'a` 只是关联关系的代号；
+
+```rust
+fn largest<T: std::cmp::PartialOrd>(list: &[T]) -> &T {
+    let mut largest:&T = &list[0];
+
+    for item in list.iter() {
+        if item > largest {
+            largest = item;
+        }
+    }
+
+    largest
+}
+
+fn main() {
+    let number_list = vec![34, 50, 25, 100, 65];
+
+    let result = largest(&number_list);
+    println!("The largest number is {}", result);
+
+    let char_list = vec!['y', 'm', 'a', 'q'];
+
+    let result = largest(&char_list);
+    println!("The largest char is {}", result);
+}
+
+// The largest number is 100
+// The largest char is y
+```
+
+## 泛型和特征
+
+### 特征
+
+#### 定义特征
+
+如果不同的类型具有相同的行为，那么我们就可以定义一个特征，然后为这些类型实现该特征
+
+```rust
+pub trait Summary {
+    fn summarize(&self) -> String;
+}
+```
+
+这里使用 `trait` 关键字来声明一个特征，`Summary` 是特征名。在大括号中定义了该特征的所有方法，在这个例子中是： `fn summarize(&self) -> String`。
+
+特征只定义行为看起来是什么样的，而不定义行为具体是怎么样的。因此，我们只定义特征方法的签名，而不进行实现，此时方法签名结尾是 ;，而不是一个 {}。
+
+#### 为类型实现特征
+
+实现特征的语法与为结构体、枚举实现方法很像：`impl Summary for Post`，读作"为 `Post` 类型实现 `Summary` 特征"，
+然后在 `impl` 的花括号中实现该特征的具体方法。
+
+```rust
+pub trait Summary {
+    fn summarize(&self) -> String;
+}
+pub struct Post {
+    pub title: String, // 标题
+    pub author: String, // 作者
+    pub content: String, // 内容
+}
+
+impl Summary for Post {
+    fn summarize(&self) -> String {
+        format!("文章{}, 作者是{}", self.title, self.author)
+    }
+}
+
+fn main() {
+    let post = Post{title: "Rust语言简介".to_string(),
+            author: "Sunface".to_string(), content: "Rust棒极了!".to_string()};
+    println!("{}",post.summarize());
+}
+```
+
+**默认实现**
+
+你可以在特征中定义具有默认实现的方法，这样其它类型无需再实现该方法，或者也可以选择重载该方法。
+
+```rust
+pub trait Summary {
+    fn summarize(&self) -> String {
+        String::from("(Read more...)")
+    }
+}
+
+pub struct Weibo {
+    pub username: String,
+    pub content: String
+}
+
+impl Summary for Weibo {}
+
+fn main() {
+    let weibo = Weibo{username: "sunface".to_string(),
+        content: "好像微博没Tweet好用".to_string()};
+    println!("{}",weibo.summarize());
+}
+```
+
+**孤儿规则**
+
+关于特征实现与定义的位置，有一条非常重要的原则：如果你想要为类型 A 实现特征 T，那么 A 或者 T 至少有一个是在当前作用域中定义的。
+
+#### 特征作为函数参数
+
+定义一个函数，使用特征作为函数参数:
+
+```rust
+pub fn notify(item: &impl Summary) {
+    println!("Breaking news! {}", item.summarize());
+}
+```
+
+`impl Summary`，顾名思义，它的意思是 实现了 `Summary` 特征 的 `item` 参数。
+
+#### 特征约束
+
+虽然 `impl Trait` 这种语法非常好理解，但是实际上它只是一个语法糖：
+
+```rust
+pub fn notify<T: Summary>(item: &T) {
+    println!("Breaking news! {}", item.summarize());
+}
+```
+
+真正的完整书写形式如上所述，形如 `T: Summary` 被称为特征约束。
+
+```rust
+pub fn notify(item1: &impl Summary, item2: &impl Summary) {}
+
+pub fn notify<T: Summary>(item1: &T, item2: &T) {}
+```
+
+对于复杂的场景，特征约束可以让我们拥有更大的灵活性和语法表现能力。
+
+**多重约束**
+
+除了单个约束条件，我们还可以指定多个约束条件。
+
+```rust
+pub fn notify(item: &(impl Summary + Display)) {}
+
+pub fn notify<T: Summary + Display>(item: &T) {}
+```
+
+**Where 约束**
+
+当特征约束变得很多时，函数的签名将变得很复杂：
+
+```rust
+fn some_function<T: Display + Clone, U: Clone + Debug>(t: &T, u: &U) -> i32 {}
+```
+
+严格来说，上面的例子还是不够复杂，但是我们还是能对其做一些形式上的改进，通过 where：
+
+```rust
+fn some_function<T, U>(t: &T, u: &U) -> i32
+    where T: Display + Clone,
+          U: Clone + Debug
+{}
+```
+
+
 
 
 ## 相关链接
