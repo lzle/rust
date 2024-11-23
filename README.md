@@ -27,7 +27,8 @@
     * [引用](#引用)
 * [生命周期](#生命周期)
     * [引用](#生命周期标注)
-* [泛型和特征](#泛型和特征)
+* [特型和泛型](#特型和泛型)
+    * [使用特型](#使用特型)
 
 
 ## 入门
@@ -1227,9 +1228,179 @@ fn main() {
 // The largest char is y
 ```
 
-## 泛型和特征
+## 特型和泛型
 
-### 特征
+泛型是 `Rust` 中另一种形式的多态。类似于 `C++` 的模板，泛型函数或泛型类型可以和不同类型的值一起使用：
+
+```
+fn min<T: Ord>(value1: T, value2: T) -> T {
+    if value1 <= value2 {
+        value1
+    } else {
+        value2
+    } 
+}
+
+fn main() {
+    let a = 10;
+    let b = 20;
+    let c = min(a, b);
+    println!("The minimum value is: {}", c);
+}
+```
+
+此函数中的 `<T: Ord>` 意味着 `min` 函数可以于实现了 `Ord` 特型的任意类型（任意有序类型）`T` 的参数一起使用。
+像这样的要求被称为界限（bounds），它对 `T` 可能的类型范围做了限制。编译器会针对你实际使用到的每一个类型 `T` 生成一份单独的机器码。
+
+### 使用特型
+
+特型代表一种能力，即一个类型能做什么。
+
+特型方法有一条需要注意的规则：特型本身必须在作用域内，否则，它的所有方法都是不可见的。
+
+```rust
+fn main() {
+    let mut buf: Vec<u8> = vec![];
+    buf.write_all(b"hello")?; // 错误：没有叫`write_all`的方法
+}
+```
+
+修复这个问题的方法是在作用域中引入 `std::io::Write` 特型：
+
+```rust
+use std::io::Write;
+
+fn main() {
+    let mut buf: Vec<u8> = vec![];
+    buf.write_all(b"hello")?; // 错误：没有叫`write_all`的方法
+}
+```
+
+`Clone` 和 `Iterator` 的方法不需要特殊的导入是因为它们默认总是在作用域里：它们是标准库预导入的一部分。
+
+#### 特型对象
+
+在 Rust 中使用特型编写多态代码有两种方法：特型对象和泛型。接下来先介绍特型对象。
+
+```rust
+fn main() {
+    let mut buf: Vec<u8> = vec![];
+
+    let writer: &mut dyn Write = &mut buf; // ok
+}
+```
+
+对特型对象（如 writer）的引用叫作特型对象。与其他引用一样，特型对象指向某个值、它有生命周期、它可以是可变的或者是共享的。
+
+在内存中，特型对象是一个胖指针，由指向值的指针和指向该值类型的虚表指针组成。
+
+<img src="/images/trait-mem.png" alt="trait-mem" width="650">
+
+Rust 会在需要时自动将普通引用转换为特型对象，这个过程叫作隐式转换。
+
+```rust
+use std::io::Write;
+use std::fs::File;
+
+fn say_hello(out: &mut dyn Write) -> std::io::Result<()> {
+    out.write_all(b"hello world\n")?;
+    out.flush()
+}
+
+fn main() {
+    let mut local_file = File::create("hello.txt")?;
+    say_hello(&mut local_file)?;
+
+    let mut bytes = vec![];
+    say_hello(&mut bytes)?;
+}
+```
+
+`&mut local_file` 的类型是 `&mut File`，而 `say_hello` 的参数类型是 `&mut dyn Write`。
+因为 `File` 是一种写入器，因此 Rust 允许将这种普通引用转换为特型对象。
+
+同样的，Rust也乐于把 Box<File> 转换成 Box<dyn Write>，它拥有一个在堆上的写入器：
+
+```rust
+let w: Box<dyn Write> = Box::new(local_file);
+```
+
+`Box<dyn Write>` 和 `&mut dyn Write` 一样是一个胖指针，它包含写入器自身的地址和虚表的地址。其他指针类型例如 `Rc<dyn Write>` 也一样。
+
+这种转换是唯一创建特型对象的唯一方法。编译器做的工作其实很简单，当转换发生时，
+Rust 知道被引用值的真正类型（这个例子中是 File），因此它只是加上了正确的虚表的地址、把普通指针变成了胖指针。
+
+#### 泛型函数和类型参数
+
+把以函数特型对象为参数的函数 `say_hello()` 改写为泛型函数：
+
+```rust
+use std::io::Write;
+use std::fs::File;
+
+fn say_hello<W: Write>(out: &mut W) -> std::io::Result<()> {
+    out.write_all(b"hello world\n")?;
+    out.flush()
+}
+
+fn main() {
+    let mut local_file = File::create("hello.txt")?;
+    say_hello(&mut local_file)?;
+
+    let mut bytes = vec![];
+    say_hello(&mut bytes)?;
+}
+```
+
+短语 `<W: Write>` 把函数变成了泛型形式，此短语叫作类型参数。
+
+Rust 会为 `say_hello()` 生成两个版本的机器码，一个是 `File` 版本，另一个是 `Vec<u8>` 版本。
+Rust 会从参数的类型推导出类型 W，这个过程被称为单态化。
+
+泛型函数可以有多个类型参数：
+
+```rust
+fn run_query<M: Mapper + Serialize, R: Reducer + Serialize>(
+        data: &DataSet, map: M, reduce: R) -> Results
+{ ... }
+```
+
+正如这个例子展示的一样，约束可能太长以至于很难阅读。Rust提供了使用关键字 where 的替代语法：
+
+```rust
+fn run_query<M, R>(data: &DataSet, map: M, reduce: R) -> Results
+    where M: Mapper + Serialize, 
+          R: Reducer + Serialize
+{ ... }
+```
+
+引用作为函数参数介绍了生命周期的语法。一个泛型函数可以同时有生命周期参数和类型参数。生命周期参数在前：
+
+```rust
+fn nearest<'t, 'c, P>(target: &'t P, candidates: &'c [P]) -> &'c P
+    where P: MeasureDistance
+{
+    ... 
+}
+```
+
+#### 使用哪一个？
+
+泛型函数的劣势在于，Rust 会为每种用到的类型都编译一次，生成一份机器码，这可能会导致二进制文件变大。
+
+但泛型相当于特型对象的优势在于：
+
+* 泛型执行速度更快，在编译期间就能确定类型，不需要运行时的虚方法的调用开销和检查错误的开销；
+
+* 泛型第二个优势在于并不是每个类型都支持特型对象，特型支持的几个特性（例如关联函数）只适用于泛型：
+它们完全不支持特型对象。
+
+* 泛型的第三个优势是可以很容易地一次给泛型类型参数添加多个特型约束，例如
+我们的 `top_ten` 函数就要求它的参数 `T` 要实现 `Debug + Hash + Eq`。特型对象不能这么做：
+Rust 不支持类似 `&mut (dyn Debug + Hash + Eq)` 这样的类型。
+
+
+
 
 #### 定义特征
 
@@ -1360,6 +1531,58 @@ fn some_function<T, U>(t: &T, u: &U) -> i32
           U: Clone + Debug
 {}
 ```
+
+### 特征对象
+
+可以通过 `&` 引用或者 `Box<T>` 智能指针的方式来创建特征对象。
+
+```rust
+trait Draw {
+    fn draw(&self) -> String;
+}
+
+impl Draw for u8 {
+    fn draw(&self) -> String {
+        format!("u8: {}", *self)
+    }
+}
+
+impl Draw for f64 {
+    fn draw(&self) -> String {
+        format!("f64: {}", *self)
+    }
+}
+
+fn draw1(x: Box<impl Draw>) -> String {
+     x.draw()
+}
+
+fn draw2(x: &dyn Draw) -> String {
+    x.draw()
+}
+
+fn main() {
+    let x = 1.1f64;
+    let y = 8u8;
+
+    // Box<T> 创建特征对象
+    draw1(Box::new(x));
+    draw1(Box::new(y));
+    
+    // & 引用 创建特征对象
+    draw2(&x);
+    draw2(&y);
+
+    println!("{}", draw2(&x));
+    println!("{}", draw2(&y));
+}
+```
+
+#### 动态分发
+
+
+
+
 
 
 
