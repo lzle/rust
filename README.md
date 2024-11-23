@@ -1399,10 +1399,7 @@ fn nearest<'t, 'c, P>(target: &'t P, candidates: &'c [P]) -> &'c P
 我们的 `top_ten` 函数就要求它的参数 `T` 要实现 `Debug + Hash + Eq`。特型对象不能这么做：
 Rust 不支持类似 `&mut (dyn Debug + Hash + Eq)` 这样的类型。
 
-
-
-
-#### 定义特征
+### 定义和实现特型
 
 如果不同的类型具有相同的行为，那么我们就可以定义一个特征，然后为这些类型实现该特征
 
@@ -1415,8 +1412,6 @@ pub trait Summary {
 这里使用 `trait` 关键字来声明一个特征，`Summary` 是特征名。在大括号中定义了该特征的所有方法，在这个例子中是： `fn summarize(&self) -> String`。
 
 特征只定义行为看起来是什么样的，而不定义行为具体是怎么样的。因此，我们只定义特征方法的签名，而不进行实现，此时方法签名结尾是 ;，而不是一个 {}。
-
-#### 为类型实现特征
 
 实现特征的语法与为结构体、枚举实现方法很像：`impl Summary for Post`，读作"为 `Post` 类型实现 `Summary` 特征"，
 然后在 `impl` 的花括号中实现该特征的具体方法。
@@ -1444,7 +1439,7 @@ fn main() {
 }
 ```
 
-**默认实现**
+#### 默认实现
 
 你可以在特征中定义具有默认实现的方法，这样其它类型无需再实现该方法，或者也可以选择重载该方法。
 
@@ -1469,9 +1464,143 @@ fn main() {
 }
 ```
 
-**孤儿规则**
+#### 孤儿规则
 
 关于特征实现与定义的位置，有一条非常重要的原则：如果你想要为类型 A 实现特征 T，那么 A 或者 T 至少有一个是在当前作用域中定义的。
+
+#### 特型中 Self
+
+特型可以用关键字 `Self` 用作类型。
+
+```rust
+pub trait Clone {
+    fn clone(&self) -> Self;
+}
+```
+
+这里使用 `Self` 作为返回类型意味着 `x.clone()` 的返回值类型和 `x` 的类型相同，不管 `x` 是什么。
+如果 `x` 是一个 `String`，那么 `x.clone()` 的类型就是 `String`。
+
+同样，如果我们定义如下特型：
+
+```rust
+pub trait Spliceable {
+    fn splice(&self, other: &Self) -> Self;
+}
+```
+
+并有两个实现：
+
+```rust
+impl Spliceable for CherryTree {
+    fn splice(&self, other: &Self) -> Self {
+        ... 
+    } 
+}
+
+impl Spliceable for Mammoth {
+    fn splice(&self, other: &Self) -> Self {
+        ... 
+    } 
+}
+```
+
+在第一个 impl 中，`Self` 就是 `CherryTree` 的别名；而在第二个 impl 中，它是 `Mammoth` 的别名。
+这意味着我们可以把两棵樱桃树或者两只猛犸象拼接在一起。
+
+
+#### 子特型
+
+我们可以声明一个特型是另一个特型的扩展：
+
+```rust
+/// 游戏世界中的某个生物，可能是玩家或者
+/// 小精灵、石像鬼、松鼠、食人魔等。
+trait Creature: Visible {
+    fn position(&self) -> (i32, i32);
+    fn facing(&self) -> Direction;
+    ... 
+}
+```
+
+
+短语 `trait Creature: Visible` 意味着所有的生物都是可视的。每一个实现了 `Creature` 的类型都必须实现 `Visible` 特型：
+
+```rust
+impl Visible for Broom {
+    ... 
+}
+
+impl Creature for Broom {
+    ... 
+}
+```
+
+可以按任意顺序实现这两个特型，但是如果不为类型实现 `Visible` 只为其实现 `Creature` 是错误的，
+在这里，我们说 `Creature` 是 `Visible` 的子特型，而 `Visible` 是 `Creature` 的超特型。
+
+#### 类型关联函数
+
+在大多数面向对象语言中，接口不能包含静态方法或构造函数，但特型可以包含类擊料函数，这是 Rust 对静态方法的模拟:
+
+```rust
+trait StringSet {
+    /// 返回一个空的集合。
+    fn new() -> Self;
+    
+    /// 返回一个包含`strings`中所有字符串的集合。
+    fn from_slice(strings: &[&str]) -> Self;
+
+    /// 查找集合是否包含`string`。
+    fn contains(&self, string: &str) -> bool;
+
+    /// 向集合中添加一个字符串。
+    fn add(&mut self, string: &str);
+}
+```
+
+在非泛型代码中，这些函数可以使用 `::` 语法调用，就像其他类型关联函数一样：
+
+```rust
+// 创建两个 impl StringSet的多态类型：
+let set1 = SortedStringSet::new();
+let set2 = HashedStringSet::new();
+```
+
+在泛型代码中，也可以使用 `::` 语法，不过其类型部分通常是类型变量，如下面对 `S:new()` 的调用所示:
+
+```rust
+/// 返回`document`中有但`wordlist`中没有的单词的集合。
+fn unknown_words<S: StringSet>(document: &[String], wordlist: &S) -> S {
+    let mut unknowns = S::new();
+    for word in document {
+    if !wordlist.contains(word) {
+    unknowns.add(word) } }
+    unknowns
+}
+```
+
+类似 `Java `和 `C#` 的接口一样，特型对象也不支持类型关联函数。如果想使用 `&dyn StringSet` 特型对象，
+就必须修改此特型，为每个未通过引用接受 `self` 参数的关联函数加上 `where Self: Sized` 约束：
+
+```rust
+trait StringSet {
+    fn new() -> Self
+        where Self: Sized;
+
+    fn from_slice(strings: &[&str]) -> Self
+        where Self: Sized;
+
+    fn contains(&self, string: &str) -> bool;
+
+    fn add(&mut self, string: &str);
+}
+```
+
+这个限界告诉 Rust，特型对象不需要支持特定的关联函数。通过添加这些限界，就能把 `StringSet` 作为特型对象使用了。
+虽然特型对象仍不支持关联函数 `new` 或 `from slice`，但你还是可以创建它们并用其调用 `.contains()` 和 `.add()`。
+同样的技巧也适用于其他与特型对象不兼容的方法。
+
 
 #### 特征作为函数参数
 
