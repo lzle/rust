@@ -29,6 +29,9 @@
     * [引用](#生命周期标注)
 * [特型和泛型](#特型和泛型)
     * [使用特型](#使用特型)
+    * [定义和实现特型](#定义和实现特型)
+    * [完全限定的方法调用](#完全限定的方法调用)
+    * [定义类型之间关系的特型](#定义类型之间关系的特型)
 
 
 ## 入门
@@ -1574,8 +1577,10 @@ let set2 = HashedStringSet::new();
 fn unknown_words<S: StringSet>(document: &[String], wordlist: &S) -> S {
     let mut unknowns = S::new();
     for word in document {
-    if !wordlist.contains(word) {
-    unknowns.add(word) } }
+        if !wordlist.contains(word) {
+            unknowns.add(word) 
+        } 
+    }
     unknowns
 }
 ```
@@ -1601,119 +1606,179 @@ trait StringSet {
 虽然特型对象仍不支持关联函数 `new` 或 `from slice`，但你还是可以创建它们并用其调用 `.contains()` 和 `.add()`。
 同样的技巧也适用于其他与特型对象不兼容的方法。
 
+### 完全限定的方法调用
 
-#### 特征作为函数参数
-
-定义一个函数，使用特征作为函数参数:
+迄今为止，我们看到的所有调用特型方法的方式都依赖于 Rust 为你补齐了一些缺失的部分。假设你编写了以下内容:
 
 ```rust
-pub fn notify(item: &impl Summary) {
-    println!("Breaking news! {}", item.summarize());
+"hello".to_string();
+```
+
+Rust 知道 `to_string` 指的是 `Tostring` 特型的 `to_string` 方法(我们称之为 str 类型的实现)。
+
+但在某些情况下，你需要一种方式来准确表达你的意思。完全限定的方法调用符合此要求。
+
+首先，要知道方法只是一种特殊的函数。这两种调用是等价的：
+
+```rust
+"hello".to_string()
+
+str::to_string("hello")
+```
+
+由于 `to_string` 是标准 `Tostring` 特型的方法之一，因此你还可以使用另外两种形式：
+
+```rust
+ToString::to_string("hello") 
+
+<str as ToString>::to_string("hello")
+```
+
+所有这4种方法调用都会做同样的事情。大多数情况下，只要写 `value.method()` 就可以了。其他形式都是限定方法调用。他们要指定方法所关联的类型或特型。
+最后一种带有尖括号的形式，同时指定了两者，这就是*完全限定*的方法调用。
+
+
+### 定义类型之间关系的特型
+
+#### 关联类型
+
+Rust 有一个标准的 Iterator 特型，它的定义如下：
+
+```
+pub trait Iterator {
+    type Item;
+
+    fn next(&mut self) -> Option<Self::Item>;
 }
 ```
 
-`impl Summary`，顾名思义，它的意思是 实现了 `Summary` 特征 的 `item` 参数。
+这个特型的第一个特性（type Item;）是一个关联类型。实现了 Iterator 的每种类型都必须指定它所生成的条目的类型。
 
-#### 特征约束
-
-虽然 `impl Trait` 这种语法非常好理解，但是实际上它只是一个语法糖：
+下面是为一个类型实现 Iterator 的例子：
 
 ```rust
-pub fn notify<T: Summary>(item: &T) {
-    println!("Breaking news! {}", item.summarize());
-}
-```
+impl Iterator for Args {
+    type Item = String;
 
-真正的完整书写形式如上所述，形如 `T: Summary` 被称为特征约束。
-
-```rust
-pub fn notify(item1: &impl Summary, item2: &impl Summary) {}
-
-pub fn notify<T: Summary>(item1: &T, item2: &T) {}
-```
-
-对于复杂的场景，特征约束可以让我们拥有更大的灵活性和语法表现能力。
-
-**多重约束**
-
-除了单个约束条件，我们还可以指定多个约束条件。
-
-```rust
-pub fn notify(item: &(impl Summary + Display)) {}
-
-pub fn notify<T: Summary + Display>(item: &T) {}
-```
-
-**Where 约束**
-
-当特征约束变得很多时，函数的签名将变得很复杂：
-
-```rust
-fn some_function<T: Display + Clone, U: Clone + Debug>(t: &T, u: &U) -> i32 {}
-```
-
-严格来说，上面的例子还是不够复杂，但是我们还是能对其做一些形式上的改进，通过 where：
-
-```rust
-fn some_function<T, U>(t: &T, u: &U) -> i32
-    where T: Display + Clone,
-          U: Clone + Debug
-{}
-```
-
-### 特征对象
-
-可以通过 `&` 引用或者 `Box<T>` 智能指针的方式来创建特征对象。
-
-```rust
-trait Draw {
-    fn draw(&self) -> String;
-}
-
-impl Draw for u8 {
-    fn draw(&self) -> String {
-        format!("u8: {}", *self)
+    fn next(&mut self) -> Option<String> {
+        ... 
     }
+
+    ... 
 }
 
-impl Draw for f64 {
-    fn draw(&self) -> String {
-        format!("f64: {}", *self)
+泛型代码也可以使用关联类型，`Item` 关联类型明确了函数的返回类型，这是必须要的。
+
+fn collect<I: Iterator>(iter: I) -> Vec<I::Item> {
+    let mut v = Vec::new();
+    for x in iter {
+        v.push(x);
     }
-}
-
-fn draw1(x: Box<impl Draw>) -> String {
-     x.draw()
-}
-
-fn draw2(x: &dyn Draw) -> String {
-    x.draw()
-}
-
-fn main() {
-    let x = 1.1f64;
-    let y = 8u8;
-
-    // Box<T> 创建特征对象
-    draw1(Box::new(x));
-    draw1(Box::new(y));
-    
-    // & 引用 创建特征对象
-    draw2(&x);
-    draw2(&y);
-
-    println!("{}", draw2(&x));
-    println!("{}", draw2(&y));
+    v
 }
 ```
 
-#### 动态分发
+继续看下面错误的例子：
 
+```rust
+/// 打印出一个迭代器产生的所有值
+fn dump<I>(iter: I)
+    where I: Iterator
+{
+    for (index, value) in iter.enumerate() {
+        println!("{}: {:?}", index, value); // 错误
+    } 
+}
+```
 
+需要确保 `I::Item` 实现了 `Debug` 特型，这样才能使用 `{:?}` 格式化字符串。
 
+```rust
+fn dump<I>(iter: I)
+    where I: Iterator,
+          I::Item: Debug
+{
+    for (index, value) in iter.enumerate() {
+        println!("{}: {:?}", index, value);
+    } 
+}
+```
 
+或者，可以说 "I 必须是针对 String 值的迭代器"：
 
+```rust
+fn dump<I>(iter: I)
+    where I: Iterator<Item=String>
+{
+    for (index, value) in iter.enumerate() {
+        println!("{}: {:?}", index, value);
+    } 
+}
+```
 
+具有关联类型的特型（如 Iterator）与特型对象是兼容的，但前提是要把所有关联类型都明确写出来。
+
+```rust
+fn dump(iter: &mut dyn Iterator<Item=String>) {
+    for (index, value) in iter.enumerate() {
+        println!("{}: {:?}", index, value);
+    } 
+}
+```
+
+#### 关联常量
+
+像结构体和枚举一样，特型也可以有关联常量。你可以用和结构体或枚举一样的语法给特型声明关联常量：
+
+```rust
+trait Greet {
+    const GREETING: &'static str = "Hello";
+    fn greet(&self) -> String; 
+}
+```
+
+特型关联常量也有特殊的作用。像关联类型和函数一样，你可以声明它们但不赋给它们值：
+
+```rust
+trait Float {
+    const ZERO: Self;
+    const ONE: Self; 
+}
+```
+
+之后，特型的实现者可以定义这些值：
+
+```rust
+impl Float for f32 {
+    const ZERO: f32 = 0.0;
+    const ONE: f32 = 1.0; 
+}
+
+impl Float for f64 {
+    const ZERO: f64 = 0.0;
+    const ONE: f64 = 1.0; 
+}
+```
+
+可以编写使用这些值的泛型代码：
+
+```rust
+fn add_one<T: Float>(x: T) -> T {
+    x + T::ONE
+}
+```
+
+实现一些非常普遍的数学函数例如斐波那契数列：
+
+```rust
+fn fib<T: Float + Add<Output=T>>(n: usize) -> T {
+    match n {
+        0 => T::ZERO, 
+        1 => T::ONE, 
+        n => fib::<T>(n - 1) + fib::<T>(n - 2) 
+    } 
+}
+```
 
 
 ## 相关链接
