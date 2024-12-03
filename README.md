@@ -32,6 +32,9 @@
     * [定义和实现特型](#定义和实现特型)
     * [完全限定的方法调用](#完全限定的方法调用)
     * [定义类型之间关系的特型](#定义类型之间关系的特型)
+* [格式化输出](#格式化输出)
+    * [Debug](#Debug)
+    * [Display](#Display)
 
 
 ## 入门
@@ -1778,6 +1781,130 @@ fn fib<T: Float + Add<Output=T>>(n: usize) -> T {
         n => fib::<T>(n - 1) + fib::<T>(n - 2) 
     } 
 }
+```
+
+## 格式化输出
+
+打印操作由 `std::fmt` 里面所定义的一系列宏来处理，包括：
+
+* format!：将格式化文本写到字符串。
+* print!：与 format! 类似，但将文本输出到控制台（io::stdout）。
+* println!: 与 print! 类似，但输出结果追加一个换行符。
+* eprint!：与 print! 类似，但将文本输出到标准错误（io::stderr）。
+* eprintln!：与 eprint! 类似，但输出结果追加一个换行符
+
+`std::fmt` 包含多种 `trait` 来控制文字显示，其中重要的两种 `trait` 的基本形式如下：
+
+* fmt::Debug：使用 {:?} 标记。格式化文本以供调试使用。
+* fmt::Display：使用 {} 标记。以更优雅和友好的风格来格式化文本。
+
+`{:?}` `{}` `{1:?}` 区别：
+
+```rust
+fn main() {
+    println!("{:?} {1:?} {0:?}", "first", "second");
+    println!("{} {1:?} {0:?}", "first", "second");
+}
+
+// "first" "second" "first"
+// first "second" "first"
+```
+
+参见标准库 [std::fmt](https://rustwiki.org/zh-CN/std/fmt/)
+
+### Debug
+
+`fmt::Debug` 这个 `trait` 使这项工作变得相当简单。所有类型都能推导（derive，即自动创建）`fmt::Debug` 的实现。
+但是 `fmt::Display` 需要手动实现。
+
+```rust
+#[derive(Debug)]
+struct Person<'a> {
+    name: &'a str,
+    age: u8
+}
+
+fn main() {
+    let name = "Peter";
+    let age = 27;
+    let peter = Person { name, age };
+
+    println!("{:?}", peter);
+    // 美化打印
+    println!("{:#?}", peter);
+}
+
+// Person { name: "Peter", age: 27 }
+// Person {
+//     name: "Peter",
+//     age: 27,
+// }
+```
+
+### Display
+
+`fmt::Display` 可以自定义输出格式，对于任何非泛型的容器类型，`fmt::Display` 都能够实现。
+
+```rust
+use std::fmt; 
+
+#[derive(Debug)]
+struct Point2D {
+    x: f64,
+    y: f64,
+}
+
+impl fmt::Display for Point2D {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        // `write!` 和 `format!` 类似，但它会将格式化后的字符串写入
+        // 一个缓冲区（即第一个参数f）中
+        write!(f, "x: {}, y: {}", self.x, self.y)
+    }
+}
+
+fn main() {
+    let point = Point2D { x: 3.3, y: 7.2 };
+
+    println!("Compare points:");
+    println!("Display: {}", point);
+    println!("Debug: {:?}", point);
+}
+
+// Compare points:
+// Display: x: 3.3, y: 7.2
+// Debug: Point2D { x: 3.3, y: 7.2 }
+```
+
+更复杂的示例，输出 `Vec` 每个元素：
+
+```rust
+use std::fmt::{self, Formatter, Display};
+
+struct List(Vec<i32>);
+
+impl Display for List {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        // 使用元组的下标获取值，并创建一个 `vec` 的引用。
+        let vec = &self.0;
+
+        write!(f, "[")?;
+
+        for (count, v) in vec.iter().enumerate() {
+            // 对每个元素（第一个元素除外）加上逗号。
+            // 使用 `?` 或 `try!` 来返回错误。
+            if count != 0 { write!(f, ", ")?; }
+            write!(f, "{}", v)?;
+        }
+        write!(f, "]")
+    }
+}
+
+fn main() {
+    let v = List(vec![1, 2, 3]);
+    println!("{}", v);
+}
+
+// [1, 2, 3]
 ```
 
 
